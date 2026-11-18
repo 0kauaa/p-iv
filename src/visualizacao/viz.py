@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 
 RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "src" / "modelagem"))
@@ -27,9 +29,9 @@ from backtest import backtest
 PASTA_RESULTADOS = RAIZ / "resultados"
 PASTA_GRAFICOS = PASTA_RESULTADOS / "graficos"
 
-ARQUIVO_RETORNOS = PASTA_RESULTADOS / "retornos-backtest.csv"
-ARQUIVO_CURVAS = PASTA_RESULTADOS / "curvas-acumuladas.csv"
-ARQUIVO_METRICAS = PASTA_RESULTADOS / "tabela-metricas.csv"
+ARQUIVO_RETORNOS = PASTA_RESULTADOS / "retornos-backtest-agressivo.csv"
+ARQUIVO_CURVAS = PASTA_RESULTADOS / "curvas-acumuladas-agressivo.csv"
+ARQUIVO_METRICAS = PASTA_RESULTADOS / "tabela-metricas-agressivo.csv"
 ARQUIVO_RETORNOS_PREP = RAIZ / "dados" / "prep" / "retornos-simples-semanais.csv"
 
 PALETA = {
@@ -40,6 +42,19 @@ PALETA = {
     "wse": "#937860",
     "kl": "#8172B3",
 }
+
+ROTULOS_MODELOS = {
+    "1/N": "1/N",
+    "shannon": "Shannon",
+    "tsallis": "Tsallis",
+    "renyi": "Rényi",
+    "wse": "WSE",
+    "kl": "KL",
+}
+
+
+def _rotulo_modelo(nome):
+    return ROTULOS_MODELOS.get(str(nome), str(nome))
 
 
 def carregar_retornos(arquivo=ARQUIVO_RETORNOS):
@@ -63,21 +78,38 @@ def _estilo():
             "axes.spines.top": False,
             "axes.spines.right": False,
             "font.size": 10,
+            "axes.formatter.use_locale": False,
         }
     )
 
 
+def _eixo_x_datas(ax):
+    """deixa o eixo temporal legível: um rótulo por ano, sem sobreposição."""
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax.xaxis.set_minor_locator(mdates.MonthLocator())
+    ax.margins(x=0)
+
+
+def _eixo_y_percentual(ax, decimais=0):
+    ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=decimais))
+
+
 def grafico_curvas(curvas, arquivo):
-    """curvas acumuladas (riqueza) por modelo, base log10 e eixo y relativo."""
+    """curvas acumuladas (riqueza) por modelo em escala log2 com rótulos simples."""
     fig, ax = plt.subplots(figsize=(10, 5))
     for col in curvas.columns:
-        ax.plot(curvas.index, curvas[col], label=col, color=PALETA[col], lw=1.6)
+        ax.plot(curvas.index, curvas[col], label=_rotulo_modelo(col), color=PALETA[col], lw=1.6)
     ax.axhline(1.0, color="black", lw=0.8, alpha=0.5, ls="--")
-    ax.set_yscale("log")
-    ax.set_title("Evolução acumulada do portfólio (log)")
+    ax.set_yscale("log", base=2)
+    ax.yaxis.set_major_locator(mticker.LogLocator(base=2))
+    ax.yaxis.set_minor_locator(mticker.NullLocator())
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}×"))
+    ax.set_title("Evolução acumulada do portfólio")
     ax.set_xlabel("Data")
-    ax.set_ylabel("Riqueza relativa (base $t_0 = 1$)")
-    ax.grid(True, which="both", alpha=0.3)
+    ax.set_ylabel("Riqueza relativa ao início ($t_0 = 1$)")
+    ax.grid(True, which="major", alpha=0.3)
+    _eixo_x_datas(ax)
     ax.legend(ncol=3, loc="upper left")
     fig.tight_layout()
     fig.savefig(arquivo, bbox_inches="tight")
@@ -90,12 +122,14 @@ def grafico_drawdown(curvas, arquivo):
     fig, ax = plt.subplots(figsize=(10, 5))
     for col in curvas.columns:
         dd = curvas[col] / curvas[col].cummax() - 1.0
-        ax.plot(curvas.index, dd, label=col, color=PALETA[col], lw=1.4)
+        ax.plot(curvas.index, dd, label=_rotulo_modelo(col), color=PALETA[col], lw=1.4)
     ax.axhline(0.0, color="black", lw=0.8, alpha=0.5)
     ax.set_title("Drawdown acumulado por modelo")
     ax.set_xlabel("Data")
-    ax.set_ylabel("Drawdown em relação ao pico")
-    ax.legend(ncol=3, loc="lower left")
+    ax.set_ylabel("Queda em relação ao pico")
+    _eixo_y_percentual(ax)
+    _eixo_x_datas(ax)
+    ax.legend(ncol=6, loc="upper center", bbox_to_anchor=(0.5, -0.12), frameon=False)
     fig.tight_layout()
     fig.savefig(arquivo, bbox_inches="tight")
     plt.close(fig)
@@ -106,21 +140,32 @@ def grafico_retornos(retornos, arquivo):
     """retornos líquidos semanais por modelo (barra discreta)."""
     fig, ax = plt.subplots(figsize=(10, 5))
     for col in retornos.columns:
-        ax.plot(retornos.index, retornos[col], label=col, color=PALETA[col], lw=0.8)
+        ax.plot(retornos.index, retornos[col], label=_rotulo_modelo(col), color=PALETA[col], lw=0.8)
     ax.axhline(0.0, color="black", lw=0.8, alpha=0.5)
     ax.set_title("Retornos líquidos semanais por modelo")
     ax.set_xlabel("Data")
     ax.set_ylabel("Retorno semanal")
-    ax.legend(ncol=3, loc="upper left")
+    _eixo_y_percentual(ax)
+    _eixo_x_datas(ax)
+    ax.legend(ncol=6, loc="upper center", bbox_to_anchor=(0.5, -0.12), frameon=False)
     fig.tight_layout()
     fig.savefig(arquivo, bbox_inches="tight")
     plt.close(fig)
     print(f"salvo em {arquivo}")
 
 
+ROTULOS_METRICAS = {
+    "retorno_acumulado": ("Retorno acumulado", True),
+    "retorno_anualizado": ("Retorno anualizado", True),
+    "vol_anual": ("Volatilidade anual", True),
+    "sharpe": ("Sharpe", False),
+    "sortino": ("Sortino", False),
+    "max_drawdown": ("Drawdown máximo", True),
+}
+
+
 def grafico_metricas(metricas, arquivo):
     """barras comparativas das métricas de cada modelo."""
-    num = len(metricas)
     metricas_t = metricas.T
     n = len(metricas)
     linhas = int(np.ceil(n / 3))
@@ -133,10 +178,18 @@ def grafico_metricas(metricas, arquivo):
         cores = [PALETA[nome] for nome in metricas_t.columns]
         ax.bar(metricas_t.columns, valores, color=cores)
         ax.axhline(0.0, color="black", lw=0.8, alpha=0.5)
-        ax.set_title(metrica)
-        ax.tick_params(axis="x", rotation=30)
+        rotulo, percentual = ROTULOS_METRICAS.get(metrica, (metrica, False))
+        ax.set_title(rotulo)
+        ax.set_ylabel("Percentual" if percentual else "Valor")
+        if percentual:
+            _eixo_y_percentual(ax)
+        ax.set_xticks(range(len(metricas_t.columns)))
+        ax.set_xticklabels(
+            [_rotulo_modelo(nome) for nome in metricas_t.columns], rotation=30, ha="right"
+        )
+        ax.margins(x=0.02)
 
-    for j in range(len(metricas_t), len(axes)):
+    for j in range(n, len(axes)):
         axes[j].set_visible(False)
 
     fig.suptitle("Métricas de desempenho por modelo", y=1.0)
@@ -160,9 +213,14 @@ def grafico_pesos(pesos_series, arquivo):
     for i, (nome, pesos) in enumerate(pesos_series.items()):
         ax = axes[i]
         ax.stackplot(pesos.index, pesos.T, labels=cols, alpha=0.85)
-        ax.set_title(nome)
+        ax.set_title(_rotulo_modelo(nome))
         ax.set_ylim(0, 1)
-        ax.margins(x=0)
+        _eixo_y_percentual(ax)
+        _eixo_x_datas(ax)
+        if i % colunas == 0:
+            ax.set_ylabel("Peso (%)")
+        if i >= n - colunas:
+            ax.set_xlabel("Data")
 
     for j in range(n, len(axes)):
         axes[j].set_visible(False)
@@ -178,14 +236,13 @@ def grafico_pesos(pesos_series, arquivo):
 
 
 CENARIOS = {
-    # sufixo de arquivo -> fator_var usado para recomputar os pesos.
-    # "" = agressivo (fvar=2.0, nomes canônicos); "-var1.0" = conservador.
-    "": 2.0,
-    "-var1.0": 1.0,
+    # sufixo de arquivo -> (rótulo, fator_var usado para recomputar os pesos).
+    "-agressivo": ("agressivo", 2.0),
+    "-conservador": ("conservador", 1.0),
 }
 
 
-def gerar_todos(sufixo=""):
+def gerar_todos(sufixo="-agressivo"):
     """gera todas as figuras de um cenário a partir dos arquivos de `resultados/`."""
     PASTA_GRAFICOS.mkdir(parents=True, exist_ok=True)
 
@@ -200,16 +257,15 @@ def gerar_todos(sufixo=""):
 
     _, pesos_series = backtest(
         pd.read_csv(ARQUIVO_RETORNOS_PREP, index_col="Date", parse_dates=True),
-        fator_var=CENARIOS[sufixo],
+        fator_var=CENARIOS[sufixo][1],
     )
     grafico_pesos(pesos_series, PASTA_GRAFICOS / f"pesos{sufixo}.png")
 
 
 def gerar_cenarios():
     """gera as figuras dos dois cenários (agressivo + conservador)."""
-    for sufixo in CENARIOS:
-        rotulo = sufixo if sufixo else "(agressivo)"
-        print(f"===== cenário sufixo={rotulo} =====")
+    for sufixo, (rotulo, _) in CENARIOS.items():
+        print(f"===== cenário {rotulo} (sufixo={sufixo}) =====")
         gerar_todos(sufixo)
 
 

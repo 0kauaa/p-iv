@@ -278,9 +278,8 @@ CENARIOS = {
 }
 
 SUFIJO_ARQUIVO = {
-    # agressivo mantém os nomes canônicos (compatibilidade); conservador usa sufixo.
-    "agressivo": "",
-    "conservador": "-var1.0",
+    "agressivo": "-agressivo",
+    "conservador": "-conservador",
 }
 
 
